@@ -1,17 +1,17 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const nodemailer = require('nodemailer');
+const cors = require('cors');
 const app = express();
 
 // Port configuration
 const PORT = process.env.PORT || 10000;
 
-const cors = require('cors');
+// Middleware to parse JSON and enable CORS
 app.use(cors());
-
-// Middleware to parse JSON
 app.use(express.json());
 
-// MongoDB Atlas Connection URI (ensure you hide sensitive data in environment variables)
+// MongoDB Atlas Connection URI
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://amitmisal789:FM7NfMggS5HUuI51@cluster0.pa5c5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 // Connect to MongoDB Atlas
@@ -19,7 +19,7 @@ mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-  .then(() => console.log('Connected to MongoDB Cloud (Atlas)'))
+  .then(() => console.log('Connected to MongoDB (Local DB)'))
   .catch(err => {
     console.error('MongoDB connection error:', err);
     process.exit(1); // Exit the process if connection fails
@@ -35,12 +35,30 @@ const formSchema = new mongoose.Schema({
 
 const Form = mongoose.model('Form', formSchema);
 
+// Configure Nodemailer Transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // Use your email provider
+  auth: {
+    user: process.env.EMAIL_USER || 'amit.misal20198@gmail.com', // Your email
+    pass: process.env.EMAIL_PASS || 'luxtsjelvcmwixgf', // Your email password or app password
+  },
+});
+
+// Verify email transporter connection
+transporter.verify((error) => {
+  if (error) {
+    console.error('Error configuring Nodemailer:', error);
+  } else {
+    console.log('Nodemailer configured and ready to send emails');
+  }
+});
+
 // API endpoint to handle form submissions
 app.post('/api/submitForm', async (req, res) => {
   try {
     const { name, email, message } = req.body;
 
-    // Input validation (additional checks)
+    // Input validation
     if (!name || !email || !message) {
       return res.status(400).json({ success: false, message: 'All fields are required' });
     }
@@ -49,10 +67,20 @@ app.post('/api/submitForm', async (req, res) => {
     const newForm = new Form({ name, email, message });
     await newForm.save();
 
-    res.status(200).json({ success: true, message: 'Form data saved successfully' });
+    // Send an email notification
+    const mailOptions = {
+      from: process.env.EMAIL_USER || 'amit.misal20198@gmail.com', // Sender address
+      to: 'amitmisal72@gmail.com', // Replace with the recipient's email
+      subject: 'New Contact Form Submission (Portfolio)',
+      text: `You have a new form submission on ${new Date().toLocaleString()}:\n\nName: ${name}\nEmail: ${email}\nMessage: ${message}`,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    res.status(200).json({ success: true, message: 'Form data saved and email sent successfully' });
   } catch (error) {
-    console.error('Error saving form data:', error);
-    res.status(500).json({ success: false, message: 'Failed to save form data' });
+    console.error('Error saving form data or sending email:', error);
+    res.status(500).json({ success: false, message: 'Failed to save form data or send email' });
   }
 });
 
